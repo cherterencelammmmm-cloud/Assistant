@@ -1,0 +1,55 @@
+{
+  "entities": {
+    "ChecklistItem": {
+      "title": "ChecklistItem",
+      "description": "An item or task in the campus survival checklist.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the item or task."
+        },
+        "importance": {
+          "type": "string",
+          "enum": ["high", "medium", "low"],
+          "description": "The importance level."
+        },
+        "urgency": {
+          "type": "string",
+          "enum": ["urgent", "normal"],
+          "description": "The urgency level."
+        },
+        "deadline": {
+          "type": "string",
+          "format": "date",
+          "description": "The deadline or usage date."
+        },
+        "needsSubmission": {
+          "type": "boolean",
+          "description": "Whether the item requires submission."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["project", "item", "quiz"],
+          "description": "The category of the item."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["in-progress", "completed"],
+          "description": "The current status of the item."
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "Timestamp of creation."
+        }
+      },
+      "required": ["name", "importance", "urgency", "deadline", "needsSubmission", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/checklist/{itemId}": {
+      "schema": "ChecklistItem",
+      "description": "Collection of checklist items."
+    }
+  }
+}

@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: checklist
+    // Document ID: itemId (auto-generated)
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - importance: string (required, ['high', 'medium', 'low'])
+    //   - urgency: string (required, ['urgent', 'normal'])
+    //   - deadline: string (required, YYYY-MM-DD)
+    //   - needsSubmission: bool (required)
+    //   - category: string (required, ['project', 'item', 'quiz'])
+    //   - status: string (required, ['in-progress', 'completed'])
+    //   - createdAt: number (required)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isValidChecklistItem(data) {
+      return data.keys().hasAll(['name', 'importance', 'urgency', 'deadline', 'needsSubmission', 'category', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['name', 'importance', 'urgency', 'deadline', 'needsSubmission', 'category', 'status', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.importance in ['high', 'medium', 'low'] &&
+             data.urgency in ['urgent', 'normal'] &&
+             data.deadline is string && data.deadline.matches("^\\d{4}-\\d{2}-\\d{2}$") &&
+             data.needsSubmission is bool &&
+             data.category in ['project', 'item', 'quiz'] &&
+             data.status in ['in-progress', 'completed'] &&
+             data.createdAt is number;
+    }
+
+    match /checklist/{itemId} {
+      // For this simple app, we allow public read/write for demo purposes
+      // In a real app, we would use request.auth
+      allow read: if true;
+      allow create: if isValidChecklistItem(request.resource.data);
+      allow update: if isValidChecklistItem(request.resource.data);
+      allow delete: if true;
+    }
+  }
+}

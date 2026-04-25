@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校園生存助手：三位一體管理</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f8fafc;
+            background-image: 
+                radial-gradient(circle at 20% 20%, #FF85A122 0%, transparent 25%),
+                radial-gradient(circle at 80% 80%, #4D96FF22 0%, transparent 25%);
+            background-attachment: fixed;
+        }
+        .candy-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 2px solid white;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            border-radius: 1.5rem;
+        }
+        .candy-input {
+            background: #f1f5f9;
+            border: 2px solid #f1f5f9;
+            border-radius: 1rem;
+            transition: all 0.2s;
+        }
+        .candy-input:focus {
+            outline: none;
+            border-color: #4D96FF;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(77, 150, 255, 0.1);
+        }
+        .tab-active {
+            background: white;
+            color: #1e293b;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        .importance-high { background-color: #FF4D4D; }
+        .importance-medium { background-color: #FFA500; }
+        .importance-low { background-color: #3399FF; }
+        
+        .status-completed {
+            opacity: 0.6;
+            filter: grayscale(0.5);
+        }
+        .status-completed .item-name {
+            text-decoration: line-through;
+            color: #94a3b8;
+        }
+
+        /* Eisenhower Matrix Styles */
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto auto;
+            gap: 1rem;
+        }
+        .matrix-quadrant {
+            padding: 1rem;
+            border-radius: 1.5rem;
+            border: 2px solid;
+            min-height: 180px;
+        }
+        .quad-q1 { background: #fee2e2; border-color: #fecaca; } /* Important & Urgent */
+        .quad-q2 { background: #fef3c7; border-color: #fde68a; } /* Important & Not Urgent */
+        .quad-q3 { background: #dcfce7; border-color: #bbf7d0; } /* Not Important & Urgent */
+        .quad-q4 { background: #f1f5f9; border-color: #e2e8f0; } /* Not Important & Not Urgent */
+
+        /* Calendar Styles */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.75rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            position: relative;
+        }
+        .calendar-day.has-quiz {
+            background-color: #B983FF22;
+            color: #7c3aed;
+            font-weight: 600;
+        }
+        .calendar-day.has-quiz::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            width: 4px;
+            height: 4px;
+            background: #B983FF;
+            border-radius: 50%;
+        }
+        .calendar-day.today {
+            border: 2px solid #4D96FF;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- Header -->
+        <header class="mb-8 text-center">
+            <div class="inline-block p-4 bg-white rounded-full shadow-lg mb-4">
+                <i data-lucide="graduation-cap" class="w-10 h-10 text-[#4D96FF]"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-slate-800 mb-2">校園生存助手</h1>
+            <p class="text-slate-500">三位一體：專案、物品、測驗管理 ✨</p>
+            
+            <div class="flex justify-center gap-4 mt-6">
+                <div class="bg-white/50 border border-white shadow-sm px-4 py-1.5 rounded-2xl text-slate-600 font-medium">
+                    進行中 (Active): <span id="stats-active" class="ml-1.5 text-indigo-600 font-bold">0</span>
+                </div>
+                <div class="bg-white/50 border border-white shadow-sm px-4 py-1.5 rounded-2xl text-slate-600 font-medium">
+                    已完成 (Done): <span id="stats-done" class="ml-1.5 text-emerald-600 font-bold">0</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Form Card -->
+        <div class="candy-card p-6 mb-8">
+            <h2 class="text-xl font-bold mb-4 flex items-center gap-2">
+                <i data-lucide="plus" class="w-5 h-5 text-[#FF85A1]"></i>
+                新增記錄
+            </h2>
+            <form id="record-form" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="text-sm font-medium text-slate-600">類別</label>
+                        <select id="f-category" class="candy-input w-full p-3">
+                            <option value="project">專案 / 報告 (Project)</option>
+                            <option value="item" selected>帶東西 (Bring Items)</option>
+                            <option value="quiz">測驗 / 考試 (Quiz)</option>
+                        </select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-sm font-medium text-slate-600">名稱</label>
+                        <input type="text" id="f-name" placeholder="輸入具體內容..." class="candy-input w-full p-3" required>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-sm font-medium text-slate-600">截止日期</label>
+                        <input type="date" id="f-deadline" class="candy-input w-full p-3" required>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1">
+                            <label class="text-sm font-medium text-slate-600">重要度</label>
+                            <select id="f-importance" class="candy-input w-full p-3">
+                                <option value="high">高重要</option>
+                                <option value="medium" selected>中重要</option>
+                                <option value="low">低重要</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-sm font-medium text-slate-600">緊急度</label>
+                            <select id="f-urgency" class="candy-input w-full p-3">
+                                <option value="urgent">緊急</option>
+                                <option value="normal" selected>正常</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                    <label class="cursor-pointer font-medium text-slate-700">需繳交回條/作業</label>
+                    <input type="checkbox" id="f-submission" class="w-5 h-5 accent-[#FF85A1]">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-2xl shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]">
+                    加入清單
+                </button>
+            </form>
+        </div>
+
+        <!-- Tabs -->
+        <div class="bg-slate-200/50 p-1.5 rounded-2xl flex mb-8">
+            <button onclick="switchTab('project')" id="tab-project" class="flex-1 py-2 rounded-xl text-sm font-bold transition-all text-slate-500">
+                專案矩陣 📑
+            </button>
+            <button onclick="switchTab('item')" id="tab-item" class="flex-1 py-2 rounded-xl text-sm font-bold transition-all tab-active">
+                物品清單 🎒
+            </button>
+            <button onclick="switchTab('quiz')" id="tab-quiz" class="flex-1 py-2 rounded-xl text-sm font-bold transition-all text-slate-500 text-nowrap">
+                測驗月曆 🎓
+            </button>
+        </div>
+
+        <!-- Special Views Container -->
+        <div id="special-view-container" class="mb-8 hidden">
+            <!-- Matrix or Calendar will be here -->
+        </div>
+
+        <!-- List Container -->
+        <div id="list-container" class="space-y-4 min-h-[200px]">
+            <!-- Items will be injected here -->
+        </div>
+
+        <!-- Edit Modal Overlay -->
+        <div id="edit-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+            <div class="candy-card w-full max-w-md p-6 shadow-2xl">
+                <h2 class="text-2xl font-bold text-slate-800 mb-6">修改記錄</h2>
+                <form id="edit-form" class="space-y-4">
+                    <input type="hidden" id="e-id">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-sm font-medium text-slate-600">類別</label>
+                            <select id="e-category" class="candy-input w-full p-3">
+                                <option value="project">專案 / 報告</option>
+                                <option value="item">帶東西</option>
+                                <option value="quiz">測驗 / 考試</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-sm font-medium text-slate-600">狀態</label>
+                            <select id="e-status" class="candy-input w-full p-3">
+                                <option value="active">進行中</option>
+                                <option value="done">已完成</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-sm font-medium text-slate-600">名稱</label>
+                        <input type="text" id="e-name" class="candy-input w-full p-3" required>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1">
+                            <label class="text-sm font-medium text-slate-600">截止日期</label>
+                            <input type="date" id="e-deadline" class="candy-input w-full p-3" required>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-sm font-medium text-slate-600">重要度</label>
+                            <select id="e-importance" class="candy-input w-full p-3">
+                                <option value="high">高重要</option>
+                                <option value="medium">中重要</option>
+                                <option value="low">低重要</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-sm font-medium text-slate-600">緊急度</label>
+                        <select id="e-urgency" class="candy-input w-full p-3">
+                            <option value="urgent">緊急</option>
+                            <option value="normal">正常</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                        <label class="cursor-pointer font-medium text-slate-700">需繳交回條/作業</label>
+                        <input type="checkbox" id="e-submission" class="w-5 h-5 accent-[#FF85A1]">
+                    </div>
+                    <div class="flex gap-3 mt-6">
+                        <button type="button" onclick="closeEditModal()" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-2xl transition-all">
+                            取消
+                        </button>
+                        <button type="submit" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-2xl shadow-lg shadow-indigo-100 transition-all active:scale-[0.98]">
+                            儲存修改
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <footer class="mt-12 text-center text-slate-400 text-sm pb-8">
+            © 2026 校園生存助手 · 讓生活更有條理
+        </footer>
+    </div>
+
+    <script>
+        // --- 核心邏輯 ---
+        let currentTab = 'item';
+        let calendarYear = new Date().getFullYear();
+        let calendarMonth = new Date().getMonth();
+        const STORAGE_KEY = 'records';
+
+        // 6. JS 必須有 3 個分離 function
+        
+        function loadData() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        }
+
+        function saveData(newRecord) {
+            const records = loadData();
+            // 4. 每條記錄必須有特定欄位
+            const recordToSave = {
+                id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+                createdAt: new Date().toISOString(),
+                status: "active", // 預設 "active"
+                urgency: "normal",
+                ...newRecord
+            };
+            records.push(recordToSave);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            renderList();
+        }
+
+        function renderList() {
+            const records = loadData();
+            const container = document.getElementById('list-container');
+            const specialContainer = document.getElementById('special-view-container');
+            const statsActive = document.getElementById('stats-active');
+            const statsDone = document.getElementById('stats-done');
+            
+            // 計算統計
+            const activeCount = records.filter(r => r.status === 'active').length;
+            const doneCount = records.filter(r => r.status === 'done').length;
+            statsActive.innerText = activeCount;
+            statsDone.innerText = doneCount;
+
+            // 過濾當前分頁
+            const filtered = records.filter(r => r.category === currentTab);
+            
+            // --- 特別視圖處理 ---
+            if (currentTab === 'project') {
+                specialContainer.classList.remove('hidden');
+                renderMatrix(filtered);
+            } else if (currentTab === 'quiz') {
+                specialContainer.classList.remove('hidden');
+                renderCalendar(filtered);
+            } else {
+                specialContainer.classList.add('hidden');
+            }
+
+            // 排序：先比日期，再比重要程度
+            filtered.sort((a, b) => {
+                const dateA = new Date(a.deadline);
+                const dateB = new Date(b.deadline);
+                if (dateA - dateB !== 0) return dateA - dateB;
+                const impMap = { high: 3, medium: 2, low: 1 };
+                return impMap[b.importance] - impMap[a.importance];
+            });
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-slate-400 bg-white/30 rounded-3xl border-2 border-dashed border-white">
+                        目前沒有記錄
+                    </div>`;
+                lucide.createIcons();
+                return;
+            }
+
+            container.innerHTML = filtered.map(item => {
+                const isDone = item.status === 'done';
+                const impColor = isDone ? 'bg-slate-300' : {
+                    high: 'importance-high',
+                    medium: 'importance-medium',
+                    low: 'importance-low'
+                }[item.importance];
+                
+                const impLabel = { high: '高重要', medium: '中重要', low: '低重要' }[item.importance];
+                const urgent = isUrgent(item);
+
+                return `
+                    <div class="relative transition-all duration-300 ${isDone ? 'status-completed' : ''}">
+                        <div class="candy-card overflow-hidden">
+                            <div class="h-1.5 w-full ${impColor}"></div>
+                            <div class="p-4 flex items-center justify-between">
+                                <div class="flex items-center gap-4 flex-1">
+                                    <button onclick="toggleStatus('${item.id}')" class="rounded-full transition-all p-1 ${isDone ? 'text-emerald-500 bg-emerald-50' : 'text-slate-300 hover:text-indigo-500 hover:bg-slate-100'}">
+                                        <i data-lucide="${isDone ? 'check-circle-2' : 'circle'}" class="w-6 h-6"></i>
+                                    </button>
+                                    
+                                    <div class="flex flex-col gap-1 overflow-hidden">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span class="font-bold text-lg text-slate-800 item-name truncate">${item.name}</span>
+                                            ${!isDone ? `<span class="px-2 py-0.5 rounded-full text-[10px] text-white ${impColor}">${impLabel}</span>` : ''}
+                                            ${urgent && !isDone ? `<span class="px-2 py-0.5 rounded-full text-[10px] bg-red-100 text-red-600 border border-red-200 animate-pulse">緊急</span>` : ''}
+                                            ${isDone ? `<span class="px-2 py-0.5 rounded-full text-[10px] border border-slate-200 text-slate-400">已完成</span>` : ''}
+                                        </div>
+                                        
+                                        <div class="flex items-center gap-3 flex-wrap">
+                                            ${item.needsSubmission ? `
+                                                <span class="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] ${isDone ? 'bg-slate-100 text-slate-400' : 'bg-[#FF85A122] text-[#FF85A1]'} font-bold">
+                                                    <i data-lucide="alert-circle" class="w-3 h-3"></i>需繳交
+                                                </span>` : ''}
+                                            <span class="text-xs font-medium flex items-center gap-1 ${isDone ? 'text-slate-400' : 'text-slate-500'}">
+                                                <i data-lucide="clock" class="w-3 h-3"></i>截止：${item.deadline}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-2">
+                                    <button onclick="openEditModal('${item.id}')" class="w-10 h-10 flex items-center justify-center bg-sky-500 hover:bg-sky-600 text-white rounded-xl shadow-md transition-all hover:scale-105 active:scale-95">
+                                        <i data-lucide="pencil" class="w-5 h-5"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // 重新渲染圖標
+            lucide.createIcons();
+        }
+
+        // --- 輔助邏輯 ---
+
+        function isUrgent(item) {
+            // 如果手動標記為緊急，或者日期在 3 天內
+            if (item.urgency === 'urgent') return true;
+            if (!item.deadline) return false;
+            
+            const deadline = new Date(item.deadline);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            
+            const diffTime = deadline - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            // 3 天內要交（包含今天與過期但未完成的）
+            return diffDays <= 3;
+        }
+
+        function renderMatrix(items) {
+            const active = items.filter(i => i.status === 'active');
+            const sections = {
+                q1: active.filter(i => i.importance === 'high' && isUrgent(i)),
+                q2: active.filter(i => i.importance === 'high' && !isUrgent(i)),
+                q3: active.filter(i => i.importance !== 'high' && isUrgent(i)),
+                q4: active.filter(i => i.importance !== 'high' && !isUrgent(i)),
+            };
+
+            const specialContainer = document.getElementById('special-view-container');
+            specialContainer.innerHTML = `
+                <div class="matrix-grid">
+                    <div class="matrix-quadrant quad-q1 overflow-y-auto">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-bold text-red-500 uppercase tracking-wider">重要且緊急</span>
+                            <span class="text-[10px] bg-red-500 text-white px-1.5 rounded-full">${sections.q1.length}</span>
+                        </div>
+                        ${sections.q1.map(i => `<div onclick="openEditModal('${i.id}')" class="text-xs bg-white/80 p-1.5 rounded-lg mb-1 shadow-sm truncate cursor-pointer hover:bg-white transition-colors border border-transparent hover:border-red-200">${i.name}</div>`).join('') || '<div class="text-[10px] opacity-40 italic">暫無</div>'}
+                    </div>
+                    <div class="matrix-quadrant quad-q2 overflow-y-auto">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-bold text-orange-500 uppercase tracking-wider">重要不緊急</span>
+                            <span class="text-[10px] bg-orange-500 text-white px-1.5 rounded-full">${sections.q2.length}</span>
+                        </div>
+                        ${sections.q2.map(i => `<div onclick="openEditModal('${i.id}')" class="text-xs bg-white/80 p-1.5 rounded-lg mb-1 shadow-sm truncate cursor-pointer hover:bg-white transition-colors border border-transparent hover:border-orange-200">${i.name}</div>`).join('') || '<div class="text-[10px] opacity-40 italic">暫無</div>'}
+                    </div>
+                    <div class="matrix-quadrant quad-q3 overflow-y-auto">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-bold text-green-500 uppercase tracking-wider">緊急不重要</span>
+                            <span class="text-[10px] bg-green-500 text-white px-1.5 rounded-full">${sections.q3.length}</span>
+                        </div>
+                        ${sections.q3.map(i => `<div onclick="openEditModal('${i.id}')" class="text-xs bg-white/80 p-1.5 rounded-lg mb-1 shadow-sm truncate cursor-pointer hover:bg-white transition-colors border border-transparent hover:border-green-200">${i.name}</div>`).join('') || '<div class="text-[10px] opacity-40 italic">暫無</div>'}
+                    </div>
+                    <div class="matrix-quadrant quad-q4 overflow-y-auto">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">不重要不緊急</span>
+                            <span class="text-[10px] bg-slate-500 text-white px-1.5 rounded-full">${sections.q4.length}</span>
+                        </div>
+                        ${sections.q4.map(i => `<div onclick="openEditModal('${i.id}')" class="text-xs bg-white/80 p-1.5 rounded-lg mb-1 shadow-sm truncate cursor-pointer hover:bg-white transition-colors border border-transparent hover:border-slate-200">${i.name}</div>`).join('') || '<div class="text-[10px] opacity-40 italic">暫無</div>'}
+                    </div>
+                </div>`;
+        }
+
+        function renderCalendar(items) {
+            const container = document.getElementById('special-view-container');
+            const firstDay = new Date(calendarYear, calendarMonth, 1).getDay();
+            const daysInMonth = new Date(calendarYear, calendarMonth + 1, 0).getDate();
+            const today = new Date();
+            
+            const quizDates = items.filter(i => i.status === 'active').map(i => i.deadline);
+
+            let daysHtml = '';
+            for (let i = 0; i < firstDay; i++) daysHtml += '<div></div>';
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${calendarYear}-${String(calendarMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const hasQuiz = quizDates.includes(dateStr);
+                const isToday = d === today.getDate() && calendarMonth === today.getMonth() && calendarYear === today.getFullYear();
+                daysHtml += `<div title="${dateStr}" class="calendar-day bg-white shadow-sm ${hasQuiz ? 'has-quiz' : ''} ${isToday ? 'today' : ''}">${d}</div>`;
+            }
+
+            container.innerHTML = `
+                <div class="candy-card p-4">
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="flex items-center gap-3">
+                            <button onclick="changeMonth(-1)" class="p-1 hover:bg-slate-100 rounded-lg transition-colors"><i data-lucide="chevron-left" class="w-5 h-5 text-slate-400"></i></button>
+                            <h3 class="font-bold text-slate-700 min-w-[100px] text-center">${calendarYear}年 ${calendarMonth + 1}月</h3>
+                            <button onclick="changeMonth(1)" class="p-1 hover:bg-slate-100 rounded-lg transition-colors"><i data-lucide="chevron-right" class="w-5 h-5 text-slate-400"></i></button>
+                        </div>
+                        <div class="text-[10px] text-slate-400">測驗標記點 •</div>
+                    </div>
+                    <div class="calendar-grid text-center text-[10px] text-slate-400 mb-2">
+                        <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+                    </div>
+                    <div class="calendar-grid">
+                        ${daysHtml}
+                    </div>
+                </div>`;
+            lucide.createIcons();
+        }
+
+        function changeMonth(delta) {
+            calendarMonth += delta;
+            if (calendarMonth > 11) { calendarMonth = 0; calendarYear++; }
+            if (calendarMonth < 0) { calendarMonth = 11; calendarYear--; }
+            renderList();
+        }
+
+        function openEditModal(id) {
+            const records = loadData();
+            const item = records.find(r => r.id === id);
+            if (!item) return;
+
+            document.getElementById('e-id').value = item.id;
+            document.getElementById('e-category').value = item.category;
+            document.getElementById('e-status').value = item.status;
+            document.getElementById('e-name').value = item.name;
+            document.getElementById('e-deadline').value = item.deadline;
+            document.getElementById('e-importance').value = item.importance;
+            document.getElementById('e-urgency').value = item.urgency || 'normal';
+            document.getElementById('e-submission').checked = item.needsSubmission;
+
+            document.getElementById('edit-modal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').classList.add('hidden');
+        }
+
+        document.getElementById('edit-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const id = document.getElementById('e-id').value;
+            const records = loadData();
+            const index = records.findIndex(r => r.id === id);
+            
+            if (index !== -1) {
+                records[index] = {
+                    ...records[index],
+                    category: document.getElementById('e-category').value,
+                    status: document.getElementById('e-status').value,
+                    name: document.getElementById('e-name').value,
+                    deadline: document.getElementById('e-deadline').value,
+                    importance: document.getElementById('e-importance').value,
+                    urgency: document.getElementById('e-urgency').value,
+                    needsSubmission: document.getElementById('e-submission').checked
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+                closeEditModal();
+                renderList();
+            }
+        });
+
+        function switchTab(tab) {
+            currentTab = tab;
+            ['project', 'item', 'quiz'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.remove('tab-active');
+                document.getElementById(`tab-${t}`).classList.add('text-slate-500');
+            });
+            document.getElementById(`tab-${tab}`).classList.add('tab-active');
+            document.getElementById(`tab-${tab}`).classList.remove('text-slate-500');
+            renderList();
+        }
+
+        function toggleStatus(id) {
+            const records = loadData();
+            const index = records.findIndex(r => r.id === id);
+            if (index !== -1) {
+                records[index].status = records[index].status === 'active' ? 'done' : 'active';
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+                renderList();
+            }
+        }
+
+        // 表單提交處理
+        document.getElementById('record-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const newRecord = {
+                category: document.getElementById('f-category').value,
+                name: document.getElementById('f-name').value,
+                deadline: document.getElementById('f-deadline').value,
+                importance: document.getElementById('f-importance').value,
+                urgency: document.getElementById('f-urgency').value,
+                needsSubmission: document.getElementById('f-submission').checked
+            };
+            
+            saveData(newRecord);
+            
+            // 加入後切換到對應分頁並重置表單
+            switchTab(newRecord.category);
+            this.reset();
+            // 預設日期回位
+            document.getElementById('f-deadline').valueAsDate = new Date();
+        });
+
+        // 初始化
+        window.onload = () => {
+            // 預設今天日期
+            document.getElementById('f-deadline').valueAsDate = new Date();
+            renderList();
+            lucide.createIcons();
+        };
+    </script>
+</body>
+</html>

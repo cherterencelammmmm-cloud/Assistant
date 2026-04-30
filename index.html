@@ -275,14 +275,32 @@
     </div>
 
     <script>
+        // --- 部署後請將此處換成你的 Apps Script Web App URL ---
+        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz5EbGok21QcwIerlxdmUUDsQSvK0H5pSrPEE1lRnXIgL1mStUfmNOTioDi7q7WxT9TNw/exec";
+
         // --- 核心邏輯 ---
         let currentTab = 'item';
         let calendarYear = new Date().getFullYear();
         let calendarMonth = new Date().getMonth();
         const STORAGE_KEY = 'records';
 
-        // 6. JS 必須有 3 個分離 function
-        
+        // 輔助函式：同步到 Google Sheet
+        async function syncToSheet(payload) {
+            if (APPS_SCRIPT_URL === "PASTE_YOUR_APPS_SCRIPT_URL_HERE") {
+                console.warn("尚未設定 APPS_SCRIPT_URL，跳過同步");
+                return;
+            }
+            try {
+                await fetch(APPS_SCRIPT_URL, {
+                    method: "POST",
+                    headers: { "Content-Type": "text/plain" },
+                    body: JSON.stringify(payload)
+                });
+            } catch (error) {
+                console.warn("同步至 Google Sheet 失敗:", error);
+            }
+        }
+
         function loadData() {
             const data = localStorage.getItem(STORAGE_KEY);
             return data ? JSON.parse(data) : [];
@@ -290,16 +308,19 @@
 
         function saveData(newRecord) {
             const records = loadData();
-            // 4. 每條記錄必須有特定欄位
             const recordToSave = {
                 id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
                 createdAt: new Date().toISOString(),
-                status: "active", // 預設 "active"
+                status: "active",
                 urgency: "normal",
                 ...newRecord
             };
             records.push(recordToSave);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            
+            // 同步新增至 Google Sheet
+            syncToSheet({ action: "create", record: recordToSave });
+            
             renderList();
         }
 
@@ -310,16 +331,13 @@
             const statsActive = document.getElementById('stats-active');
             const statsDone = document.getElementById('stats-done');
             
-            // 計算統計
             const activeCount = records.filter(r => r.status === 'active').length;
             const doneCount = records.filter(r => r.status === 'done').length;
             statsActive.innerText = activeCount;
             statsDone.innerText = doneCount;
 
-            // 過濾當前分頁
             const filtered = records.filter(r => r.category === currentTab);
             
-            // --- 特別視圖處理 ---
             if (currentTab === 'project') {
                 specialContainer.classList.remove('hidden');
                 renderMatrix(filtered);
@@ -330,7 +348,6 @@
                 specialContainer.classList.add('hidden');
             }
 
-            // 排序：先比日期，再比重要程度
             filtered.sort((a, b) => {
                 const dateA = new Date(a.deadline);
                 const dateB = new Date(b.deadline);
@@ -400,14 +417,10 @@
                 `;
             }).join('');
             
-            // 重新渲染圖標
             lucide.createIcons();
         }
 
-        // --- 輔助邏輯 ---
-
         function isUrgent(item) {
-            // 如果手動標記為緊急，或者日期在 3 天內
             if (item.urgency === 'urgent') return true;
             if (!item.deadline) return false;
             
@@ -418,7 +431,6 @@
             const diffTime = deadline - today;
             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             
-            // 3 天內要交（包含今天與過期但未完成的）
             return diffDays <= 3;
         }
 
@@ -548,6 +560,22 @@
                     needsSubmission: document.getElementById('e-submission').checked
                 };
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+                
+                // 同步更新至 Google Sheet（只傳送變更的欄位）
+                syncToSheet({
+                    action: "update",
+                    id: id,
+                    changes: {
+                        category: records[index].category,
+                        status: records[index].status,
+                        name: records[index].name,
+                        deadline: records[index].deadline,
+                        importance: records[index].importance,
+                        urgency: records[index].urgency,
+                        needsSubmission: records[index].needsSubmission
+                    }
+                });
+                
                 closeEditModal();
                 renderList();
             }
@@ -570,6 +598,16 @@
             if (index !== -1) {
                 records[index].status = records[index].status === 'active' ? 'done' : 'active';
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+                
+                // 同步狀態變更至 Google Sheet
+                syncToSheet({
+                    action: "update",
+                    id: id,
+                    changes: {
+                        status: records[index].status
+                    }
+                });
+                
                 renderList();
             }
         }
@@ -588,16 +626,13 @@
             
             saveData(newRecord);
             
-            // 加入後切換到對應分頁並重置表單
             switchTab(newRecord.category);
             this.reset();
-            // 預設日期回位
             document.getElementById('f-deadline').valueAsDate = new Date();
         });
 
         // 初始化
         window.onload = () => {
-            // 預設今天日期
             document.getElementById('f-deadline').valueAsDate = new Date();
             renderList();
             lucide.createIcons();

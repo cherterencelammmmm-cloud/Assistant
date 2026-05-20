@@ -127,6 +127,11 @@
                 <div class="bg-white/50 border border-white shadow-sm px-4 py-1.5 rounded-2xl text-slate-600 font-medium">
                     已完成 (Done): <span id="stats-done" class="ml-1.5 text-emerald-600 font-bold">0</span>
                 </div>
+                <!-- AI 摘要按鈕（新增） -->
+                <button onclick="handleAISummary()" id="aiBtn" class="flex items-center gap-2 bg-zinc-800 text-zinc-100 px-4 py-2 rounded-full font-medium hover:bg-zinc-700 transition-colors active:scale-95 border border-zinc-700 disabled:opacity-50">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    <span id="aiBtnText">AI 摘要</span>
+                </button>
             </div>
         </header>
 
@@ -284,6 +289,48 @@
         let calendarMonth = new Date().getMonth();
         const STORAGE_KEY = 'records';
 
+        // --- 工具函式：將 Sheet 記錄標準化為內部格式 ---
+        function normalizeRecord(record) {
+            return {
+                id: record.id || record.ID || "",
+                createdAt: record.createdAt || record.CreatedAt || "",
+                // 內部用 name 欄位，兼容 Sheet 可能用 Content 儲存內容
+                name: record.name || record.Name || record.content || record.Content || "",
+                category: record.category || record.Category || "item",
+                // 保留 likes（即使目前未使用）
+                likes: Number(record.likes !== undefined ? record.likes : (record.Likes || 0)),
+                status: record.status || record.Status || "active",
+                deadline: record.deadline || record.Deadline || "",
+                importance: record.importance || record.Importance || "medium",
+                urgency: record.urgency || record.Urgency || "normal",
+                needsSubmission: record.needsSubmission !== undefined ? record.needsSubmission : (record.NeedsSubmission || false)
+            };
+        }
+
+        // --- 從 Sheet 讀取全部記錄（GET）---
+        async function fetchRecordsFromSheet() {
+            if (APPS_SCRIPT_URL.includes("PASTE")) return null;
+            try {
+                const res = await fetch(APPS_SCRIPT_URL);
+                const data = await res.json();
+                return Array.isArray(data.records) ? data.records.map(normalizeRecord) : null;
+            } catch (e) {
+                console.warn("從 Sheet 讀取失敗", e);
+                return null;
+            }
+        }
+
+        // --- 載入資料：先遠端，失敗則 localStorage ---
+        async function loadData() {
+            const remote = await fetchRecordsFromSheet();
+            if (remote) {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(remote));
+                return remote;
+            }
+            const data = localStorage.getItem(STORAGE_KEY);
+            return data ? JSON.parse(data) : [];
+        }
+
         // 輔助函式：同步到 Google Sheet
         async function syncToSheet(payload) {
             if (APPS_SCRIPT_URL === "PASTE_YOUR_APPS_SCRIPT_URL_HERE") {
@@ -301,13 +348,9 @@
             }
         }
 
-        function loadData() {
-            const data = localStorage.getItem(STORAGE_KEY);
-            return data ? JSON.parse(data) : [];
-        }
-
-        function saveData(newRecord) {
-            const records = loadData();
+        // 新增記錄（async）
+        async function saveData(newRecord) {
+            const records = await loadData();
             const recordToSave = {
                 id: Date.now() + "_" + Math.random().toString(36).slice(2, 6),
                 createdAt: new Date().toISOString(),
@@ -321,11 +364,13 @@
             // 同步新增至 Google Sheet
             syncToSheet({ action: "create", record: recordToSave });
             
-            renderList();
+            // 用最新 records 渲染，避免重取遠端舊資料
+            await renderList(records);
         }
 
-        function renderList() {
-            const records = loadData();
+        // --- 渲染清單（支援 recordsOverride）---
+        async function renderList(recordsOverride) {
+            const records = recordsOverride || await loadData();
             const container = document.getElementById('list-container');
             const specialContainer = document.getElementById('special-view-container');
             const statsActive = document.getElementById('stats-active');
@@ -522,30 +567,32 @@
         }
 
         function openEditModal(id) {
-            const records = loadData();
-            const item = records.find(r => r.id === id);
-            if (!item) return;
+            const records = loadData().then(records => {
+                const item = records.find(r => r.id === id);
+                if (!item) return;
 
-            document.getElementById('e-id').value = item.id;
-            document.getElementById('e-category').value = item.category;
-            document.getElementById('e-status').value = item.status;
-            document.getElementById('e-name').value = item.name;
-            document.getElementById('e-deadline').value = item.deadline;
-            document.getElementById('e-importance').value = item.importance;
-            document.getElementById('e-urgency').value = item.urgency || 'normal';
-            document.getElementById('e-submission').checked = item.needsSubmission;
+                document.getElementById('e-id').value = item.id;
+                document.getElementById('e-category').value = item.category;
+                document.getElementById('e-status').value = item.status;
+                document.getElementById('e-name').value = item.name;
+                document.getElementById('e-deadline').value = item.deadline;
+                document.getElementById('e-importance').value = item.importance;
+                document.getElementById('e-urgency').value = item.urgency || 'normal';
+                document.getElementById('e-submission').checked = item.needsSubmission;
 
-            document.getElementById('edit-modal').classList.remove('hidden');
+                document.getElementById('edit-modal').classList.remove('hidden');
+            });
         }
 
         function closeEditModal() {
             document.getElementById('edit-modal').classList.add('hidden');
         }
 
-        document.getElementById('edit-form').addEventListener('submit', function(e) {
+        // 修改表單提交（async）
+        document.getElementById('edit-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const id = document.getElementById('e-id').value;
-            const records = loadData();
+            const records = await loadData();
             const index = records.findIndex(r => r.id === id);
             
             if (index !== -1) {
@@ -577,7 +624,7 @@
                 });
                 
                 closeEditModal();
-                renderList();
+                await renderList(records);
             }
         });
 
@@ -589,11 +636,11 @@
             });
             document.getElementById(`tab-${tab}`).classList.add('tab-active');
             document.getElementById(`tab-${tab}`).classList.remove('text-slate-500');
-            renderList();
+            renderList();  // renderList 已是 async，此處直接呼叫
         }
 
-        function toggleStatus(id) {
-            const records = loadData();
+        async function toggleStatus(id) {
+            const records = await loadData();
             const index = records.findIndex(r => r.id === id);
             if (index !== -1) {
                 records[index].status = records[index].status === 'active' ? 'done' : 'active';
@@ -608,12 +655,12 @@
                     }
                 });
                 
-                renderList();
+                await renderList(records);
             }
         }
 
-        // 表單提交處理
-        document.getElementById('record-form').addEventListener('submit', function(e) {
+        // 表單提交處理（async）
+        document.getElementById('record-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const newRecord = {
                 category: document.getElementById('f-category').value,
@@ -624,17 +671,50 @@
                 needsSubmission: document.getElementById('f-submission').checked
             };
             
-            saveData(newRecord);
+            await saveData(newRecord);
             
             switchTab(newRecord.category);
             this.reset();
             document.getElementById('f-deadline').valueAsDate = new Date();
         });
 
-        // 初始化
-        window.onload = () => {
+        // --- AI 功能 ---
+        async function askAI(userPrompt) {
+            const res = await fetch(APPS_SCRIPT_URL, {
+                method: "POST",
+                headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify({ action: "askAI", prompt: userPrompt })
+            });
+            const data = await res.json();
+            return data.result || data.error || "AI 冇回應";
+        }
+
+        async function handleAISummary() {
+            const btn = document.getElementById('aiBtn');
+            const text = document.getElementById('aiBtnText');
+            btn.disabled = true;
+            text.textContent = '思考中...';
+            try {
+                const records = await loadData();
+                if (records.length === 0) { alert('未有記錄可以摘要'); return; }
+                const summaryInput = records.slice(0, 30).map(r =>
+                    `[${r.category}] ${r.name} (截止: ${r.deadline}, 重要: ${r.importance}, 緊急: ${r.urgency})`
+                ).join('\n');
+                const prompt = '以下是校園任務記錄。請用繁體中文，用 3-5 句概括整體狀況、需要注意嘅 deadline、有冇遺漏嘅重要事項或建議優先處理嘅項目：\n\n' + summaryInput;
+                const result = await askAI(prompt);
+                alert(result);
+            } catch (e) {
+                alert('AI 出錯：' + e.message);
+            } finally {
+                btn.disabled = false;
+                text.textContent = 'AI 摘要';
+            }
+        }
+
+        // 初始化（async）
+        window.onload = async () => {
             document.getElementById('f-deadline').valueAsDate = new Date();
-            renderList();
+            await renderList();
             lucide.createIcons();
         };
     </script>

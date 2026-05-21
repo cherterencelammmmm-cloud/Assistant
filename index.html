@@ -281,7 +281,7 @@
 
     <script>
         // --- 部署後請將此處換成你的 Apps Script Web App URL ---
-        const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxGf6hkPJIIlkpZjxJGKh72hI2ln1px-npysv-eikE2lizrei2Pi95YG1LCpCKgg0Sdag/exec";
+        const APPS_SCRIPT_URL = "PASTE_YOUR_APPS_SCRIPT_URL_HERE";
 
         // --- 核心邏輯 ---
         let currentTab = 'item';
@@ -336,7 +336,6 @@
                 console.warn("尚未設定 APPS_SCRIPT_URL，跳過同步");
                 return;
             }
-            // 將內部記錄轉成後端期待的欄位名稱
             if (payload.action === 'create' && payload.record) {
                 const r = payload.record;
                 payload.record = {
@@ -708,7 +707,7 @@
                     throw new Error('APPS_SCRIPT_URL 未設定，請貼上真正的 Apps Script 網址');
                 }
 
-                // 2. 讀取資料
+                // 2. 讀取所有記錄
                 const records = await loadData();
                 console.log('讀取到記錄數量:', records.length);
                 if (records.length === 0) {
@@ -716,11 +715,34 @@
                     return;
                 }
 
-                // 3. 準備 prompt
-                const summaryInput = records.slice(0, 30).map(r =>
-                    `[${r.category}] ${r.name || r.content}`
-                ).join('\n');
-                const prompt = '以下是班級吐槽牆嘅留言。請用繁體中文，用 3-5 句概括同學最關心嘅問題、情緒同有冇明顯 patterns:\n\n' + summaryInput;
+                // 3. 整理資料，準備一個有結構嘅 prompt
+                const activeRecords = records.filter(r => r.status === 'active');
+                const categoryMap = { project: '專案', item: '物品', quiz: '測驗' };
+                
+                const summaryParts = [];
+                for (const [cat, label] of Object.entries(categoryMap)) {
+                    const items = activeRecords.filter(r => r.category === cat);
+                    if (items.length === 0) continue;
+                    const lines = items.map(r => {
+                        const imp = { high: '‼️高重要', medium: '⚠️中重要', low: '✅低重要' }[r.importance] || '';
+                        const urg = r.urgency === 'urgent' ? '🔥緊急' : '';
+                        const sub = r.needsSubmission ? '📎需繳交' : '';
+                        const deadline = r.deadline ? `📅${r.deadline}` : '';
+                        return `  - ${r.name} ${imp} ${urg} ${sub} ${deadline}`.trim();
+                    }).join('\n');
+                    summaryParts.push(`【${label}】\n${lines}`);
+                }
+
+                const summaryInput = summaryParts.join('\n\n');
+                const prompt = 
+                    '我有一個「校園生存助手」，用來管理專案、要帶嘅物品同測驗。' +
+                    '以下係目前所有進行中嘅事項，請用繁體中文幫我歸納：\n' +
+                    '1. 指出最多人關注嘅類別（專案/物品/測驗）\n' +
+                    '2. 有冇即將到期或緊急嘅事項要立刻處理\n' +
+                    '3. 有冇重複出現嘅物品或任務（例如成日要帶水樽）\n' +
+                    '請用 3-5 句概括，唔好用列表，直接講重點。\n\n' +
+                    summaryInput;
+
                 console.log('Prompt 長度:', prompt.length);
 
                 // 4. 呼叫 askAI
@@ -729,7 +751,7 @@
                 console.log('askAI 回傳:', result);
 
                 // 5. 顯示結果
-                alert(result);
+                alert('📊 AI 摘要結果：\n\n' + result);
 
             } catch (e) {
                 console.error('handleAISummary 錯誤:', e);

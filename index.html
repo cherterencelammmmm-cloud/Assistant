@@ -294,13 +294,11 @@
             return {
                 id: record.id || record.ID || "",
                 createdAt: record.createdAt || record.CreatedAt || "",
-                // 支援 Content / content / name 三個來源
                 content: record.content || record.Content || record.name || "",
                 name: record.name || record.content || record.Content || "",
                 category: record.category || record.Category || "item",
                 likes: Number(record.likes !== undefined ? record.likes : (record.Likes || 0)),
                 status: record.status || record.Status || "active",
-                // 保留任務管理專用欄位（若 Sheet 有則用，否則給預設值）
                 deadline: record.deadline || record.Deadline || new Date().toISOString().split('T')[0],
                 importance: record.importance || record.Importance || "medium",
                 urgency: record.urgency || record.Urgency || "normal",
@@ -338,7 +336,7 @@
                 console.warn("尚未設定 APPS_SCRIPT_URL，跳過同步");
                 return;
             }
-            // 將內部記錄轉成後端期待的欄位名稱（Content, Category, Likes, Status, ...）
+            // 將內部記錄轉成後端期待的欄位名稱
             if (payload.action === 'create' && payload.record) {
                 const r = payload.record;
                 payload.record = {
@@ -346,7 +344,6 @@
                     Category: r.category,
                     Likes: r.likes || 0,
                     Status: r.status,
-                    // 保留其他可能被使用的欄位
                     ID: r.id,
                     CreatedAt: r.createdAt,
                     Deadline: r.deadline,
@@ -355,7 +352,6 @@
                     NeedsSubmission: r.needsSubmission
                 };
             } else if (payload.action === 'update' && payload.changes) {
-                // 將 changes 的 key 轉成大寫開頭（若需要）
                 const map = { content: 'Content', category: 'Category', likes: 'Likes', status: 'Status',
                               name: 'Content', deadline: 'Deadline', importance: 'Importance',
                               urgency: 'Urgency', needsSubmission: 'NeedsSubmission' };
@@ -382,14 +378,13 @@
                 urgency: "normal",
                 likes: 0,
                 ...newRecord,
-                // 確保 content 與 name 同步
                 content: newRecord.content || newRecord.name,
                 name: newRecord.name || newRecord.content
             };
             records.push(recordToSave);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
             syncToSheet({ action: "create", record: recordToSave });
-            await renderList(records);   // 傳入最新 records 避免 remote 覆蓋
+            await renderList(records);
         }
 
         // ========== 按讚 (Like) ==========
@@ -404,7 +399,7 @@
             }
         }
 
-        // ========== 切換完成狀態 (保留原有 toggleStatus) ==========
+        // ========== 切換完成狀態 ==========
         async function toggleStatus(id) {
             const records = await loadData();
             const index = records.findIndex(r => r.id === id);
@@ -651,7 +646,7 @@
                     category: document.getElementById('e-category').value,
                     status: document.getElementById('e-status').value,
                     name: document.getElementById('e-name').value,
-                    content: document.getElementById('e-name').value, // keep in sync
+                    content: document.getElementById('e-name').value,
                     deadline: document.getElementById('e-deadline').value,
                     importance: document.getElementById('e-importance').value,
                     urgency: document.getElementById('e-urgency').value,
@@ -703,20 +698,49 @@
             const text = document.getElementById('aiBtnText');
             btn.disabled = true;
             text.textContent = '思考中...';
+
             try {
+                console.log('=== AI 摘要開始 ===');
+
+                // 1. 檢查 URL
+                console.log('APPS_SCRIPT_URL:', APPS_SCRIPT_URL);
+                if (APPS_SCRIPT_URL.includes("PASTE")) {
+                    throw new Error('APPS_SCRIPT_URL 未設定，請貼上真正的 Apps Script 網址');
+                }
+
+                // 2. 讀取資料
                 const records = await loadData();
-                if (records.length === 0) { alert('未有記錄可以摘要'); return; }
+                console.log('讀取到記錄數量:', records.length);
+                if (records.length === 0) {
+                    alert('未有記錄可以摘要');
+                    return;
+                }
+
+                // 3. 準備 prompt
                 const summaryInput = records.slice(0, 30).map(r =>
                     `[${r.category}] ${r.name || r.content}`
                 ).join('\n');
                 const prompt = '以下是班級吐槽牆嘅留言。請用繁體中文，用 3-5 句概括同學最關心嘅問題、情緒同有冇明顯 patterns:\n\n' + summaryInput;
+                console.log('Prompt 長度:', prompt.length);
+
+                // 4. 呼叫 askAI
+                console.log('開始呼叫 askAI...');
                 const result = await askAI(prompt);
+                console.log('askAI 回傳:', result);
+
+                // 5. 顯示結果
                 alert(result);
+
             } catch (e) {
-                alert('AI 出錯：' + e.message);
+                console.error('handleAISummary 錯誤:', e);
+                console.error('錯誤類型:', e.name);
+                console.error('錯誤訊息:', e.message);
+                console.error('錯誤堆疊:', e.stack);
+                alert('AI 出錯：' + (e.message || '未知錯誤（請打開 F12 Console 睇紅色訊息）'));
             } finally {
                 btn.disabled = false;
                 text.textContent = 'AI 摘要';
+                console.log('=== AI 摘要結束 ===');
             }
         }
 
